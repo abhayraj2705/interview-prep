@@ -1,11 +1,27 @@
 import { Roadmap } from "../models/roadmap.model.js";
-import { activateRoadmap, convertRoadmapToTasks, createRoadmap } from "../services/roadmap.service.js";
+import {
+  activateRoadmap,
+  convertRoadmapToTasks,
+  createRoadmap,
+  getRoadmapGenerationJob,
+  startRoadmapGenerationJob
+} from "../services/roadmap.service.js";
 import { successResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const generateRoadmap = asyncHandler(async (req, res) => {
   const roadmap = await createRoadmap(req.user._id, req.body);
   return successResponse(res, "AI roadmap generated", { roadmap }, 201);
+});
+
+export const startGenerateRoadmap = asyncHandler(async (req, res) => {
+  const job = await startRoadmapGenerationJob(req.user._id, req.body);
+  return successResponse(res, "AI roadmap generation started", { job }, 202);
+});
+
+export const getGenerateRoadmapJob = asyncHandler(async (req, res) => {
+  const job = await getRoadmapGenerationJob(req.user._id, req.params.jobId);
+  return successResponse(res, "AI roadmap generation job fetched", { job });
 });
 
 export const getRoadmaps = asyncHandler(async (req, res) => {

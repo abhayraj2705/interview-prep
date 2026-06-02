@@ -25,6 +25,7 @@ export default function AiPlanner() {
   const [answers, setAnswers] = useState({});
   const [roadmap, setRoadmap] = useState(null);
   const [loading, setLoading] = useState("");
+  const [generationStatus, setGenerationStatus] = useState("");
   const [error, setError] = useState("");
 
   function toggleFocus(area) {
@@ -70,6 +71,7 @@ export default function AiPlanner() {
       return;
     }
     setLoading("roadmap");
+    setGenerationStatus("Starting roadmap generation...");
     setError("");
     try {
       const questionnaire = questions.map((question) => ({
@@ -77,10 +79,28 @@ export default function AiPlanner() {
         question: question.question,
         answer: Array.isArray(answers[question.id]) ? answers[question.id].join(", ") : answers[question.id] || ""
       }));
-      const response = await roadmapApi.generate({ ...form, questionnaire });
-      setRoadmap(response.data.data.roadmap);
+      const response = await roadmapApi.generateAsync({ ...form, questionnaire });
+      const jobId = response.data.data.job._id;
+      setGenerationStatus("AI is building your day-wise plan. This can take up to a minute...");
+
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const jobResponse = await roadmapApi.generationJob(jobId);
+        const job = jobResponse.data.data.job;
+        if (job.status === "Completed") {
+          setRoadmap(job.roadmapId);
+          setGenerationStatus("Roadmap generated successfully.");
+          return;
+        }
+        if (job.status === "Failed") {
+          throw new Error(job.errorMessage || "Roadmap generation failed.");
+        }
+        setGenerationStatus(job.status === "Processing" ? "Generating roadmap details..." : "Waiting in generation queue...");
+      }
+      throw new Error("Roadmap generation is taking longer than expected. Please check Roadmaps in a minute.");
     } catch (err) {
       setError(getErrorMessage(err));
+      setGenerationStatus("");
     } finally {
       setLoading("");
     }
@@ -103,6 +123,7 @@ export default function AiPlanner() {
       </header>
 
       {error ? <div className="alert">{error}</div> : null}
+      {generationStatus ? <div className="alert soft">{generationStatus}</div> : null}
 
       <Card className="planner-card">
         <div className="section-title"><h2>1. Goal Setup</h2><span>Tell AI what you want to finish</span></div>

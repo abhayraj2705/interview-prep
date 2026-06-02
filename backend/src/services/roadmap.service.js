@@ -1,4 +1,5 @@
 import { Roadmap } from "../models/roadmap.model.js";
+import { RoadmapGenerationJob } from "../models/roadmapGenerationJob.model.js";
 import { Task } from "../models/task.model.js";
 import { generateRoadmapData } from "./ai.service.js";
 import { startOfDay } from "../utils/date.js";
@@ -51,6 +52,42 @@ export async function createRoadmap(userId, payload) {
     questionnaire: payload.questionnaire || [],
     days: output.days
   });
+}
+
+export async function startRoadmapGenerationJob(userId, payload) {
+  const job = await RoadmapGenerationJob.create({ userId, payload, status: "Queued" });
+
+  setImmediate(async () => {
+    try {
+      job.status = "Processing";
+      job.startedAt = new Date();
+      await job.save();
+
+      const roadmap = await createRoadmap(userId, payload);
+      job.status = "Completed";
+      job.roadmapId = roadmap._id;
+      job.completedAt = new Date();
+      await job.save();
+    } catch (error) {
+      job.status = "Failed";
+      job.errorMessage = error.message || "Roadmap generation failed";
+      job.completedAt = new Date();
+      await job.save().catch(() => undefined);
+      console.error("Roadmap generation job failed", error);
+    }
+  });
+
+  return job;
+}
+
+export async function getRoadmapGenerationJob(userId, jobId) {
+  const job = await RoadmapGenerationJob.findOne({ _id: jobId, userId }).populate("roadmapId").lean();
+  if (!job) {
+    const error = new Error("Roadmap generation job not found");
+    error.statusCode = 404;
+    throw error;
+  }
+  return job;
 }
 
 export async function convertRoadmapToTasks(userId, roadmapId, options = {}) {

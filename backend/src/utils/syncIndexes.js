@@ -3,6 +3,7 @@ import { DailyReport } from "../models/dailyReport.model.js";
 import { EmailLog } from "../models/emailLog.model.js";
 import { Reward } from "../models/reward.model.js";
 import { Roadmap } from "../models/roadmap.model.js";
+import { RoadmapGenerationJob } from "../models/roadmapGenerationJob.model.js";
 import { Task } from "../models/task.model.js";
 import { User } from "../models/user.model.js";
 import { WeeklyReport } from "../models/weeklyReport.model.js";
@@ -20,6 +21,7 @@ export async function syncMongoIndexes() {
     EmailLog.syncIndexes(),
     AuditLog.syncIndexes(),
     AiPlan.syncIndexes(),
+    RoadmapGenerationJob.syncIndexes(),
     Roadmap.syncIndexes()
   ]);
 
