@@ -43,11 +43,24 @@ export default function Tasks() {
     [filters, roadmapId, source]
   );
 
-  async function loadTasks() {
-    setLoading(true);
+  function taskMatchesFilters(task, scopedFilters = activeFilters) {
+    if (scopedFilters.category && task.category !== scopedFilters.category) return false;
+    if (scopedFilters.status && task.status !== scopedFilters.status) return false;
+    if (scopedFilters.priority && task.priority !== scopedFilters.priority) return false;
+    if (scopedFilters.source && task.source?.type !== scopedFilters.source) return false;
+    if (scopedFilters.roadmapId && String(task.source?.roadmapId) !== String(scopedFilters.roadmapId)) return false;
+    return true;
+  }
+
+  function sortTasks(items) {
+    return [...items].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate) || new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  }
+
+  async function loadTasks({ showLoading = true } = {}) {
+    if (showLoading) setLoading(true);
     const response = await taskApi.list(activeFilters);
     setTasks(response.data.data.tasks);
-    setLoading(false);
+    if (showLoading) setLoading(false);
   }
 
   useEffect(() => {
@@ -63,19 +76,31 @@ export default function Tasks() {
     setMessage("");
     const payload = { ...form, dueDate: new Date(form.dueDate).toISOString() };
     try {
-      if (editingId) await taskApi.update(editingId, payload);
-      else await taskApi.create(payload);
+      if (editingId) {
+        const response = await taskApi.update(editingId, payload);
+        const updatedTask = response.data.data.task;
+        setTasks((current) =>
+          taskMatchesFilters(updatedTask)
+            ? sortTasks(current.map((task) => (task._id === editingId ? updatedTask : task)))
+            : current.filter((task) => task._id !== editingId)
+        );
+      } else {
+        const response = await taskApi.create(payload);
+        const createdTask = response.data.data.task;
+        if (taskMatchesFilters(createdTask)) {
+          setTasks((current) => sortTasks([createdTask, ...current]));
+        }
+      }
       setForm(initialForm);
       setEditingId(null);
       setShowForm(false);
-      await loadTasks();
     } catch (err) {
       setError(err.response?.status === 404 ? "That task no longer exists. The list has been refreshed." : getErrorMessage(err));
       if (err.response?.status === 404) {
         setForm(initialForm);
         setEditingId(null);
         setShowForm(false);
-        await loadTasks().catch(() => null);
+        await loadTasks({ showLoading: false }).catch(() => null);
       }
     }
   }
@@ -90,19 +115,35 @@ export default function Tasks() {
     setError("");
     setMessage("");
     try {
-      await action();
-      await loadTasks();
+      return await action();
     } catch (err) {
       const message = getErrorMessage(err);
       setError(err.response?.status === 404 ? "That task no longer exists. The list has been refreshed." : message || fallbackMessage);
-      await loadTasks().catch(() => null);
+      await loadTasks({ showLoading: false }).catch(() => null);
+      return null;
     }
   }
 
   async function completeTask(task) {
-    await runTaskAction(
+    const previousTasks = tasks;
+    setTasks((current) =>
+      taskMatchesFilters({ ...task, status: "Completed" })
+        ? current.map((item) => (item._id === task._id ? { ...item, status: "Completed", completedAt: new Date().toISOString() } : item))
+        : current.filter((item) => item._id !== task._id)
+    );
+    const response = await runTaskAction(
       () => taskApi.complete(task._id, { actualTimeMinutes: task.actualTimeMinutes || task.estimatedTimeMinutes || 0 }),
       "Could not complete task"
+    );
+    if (!response) {
+      setTasks(previousTasks);
+      return;
+    }
+    const completedTask = response.data.data.task;
+    setTasks((current) =>
+      taskMatchesFilters(completedTask)
+        ? sortTasks(current.map((item) => (item._id === completedTask._id ? completedTask : item)))
+        : current.filter((item) => item._id !== completedTask._id)
     );
   }
 

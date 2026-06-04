@@ -1,6 +1,6 @@
-import { Activity, BarChart3, BookOpenCheck, Brain, Clock3, Flame, RefreshCw, Target, Trophy } from "lucide-react";
+import { Activity, BarChart3, BookOpenCheck, Brain, CalendarDays, Clock3, Flame, RefreshCw, Target, Trophy } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import Card from "../components/ui/Card.jsx";
 import StatCard from "../components/ui/StatCard.jsx";
 import { reportApi } from "../services/reportApi";
@@ -17,6 +17,29 @@ function formatDate(date) {
   return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatMinutes(minutes = 0) {
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
+}
+
+function reportDayKey(report) {
+  return new Date(report.date).toLocaleDateString("en-CA");
+}
+
+function getUniqueDailyReports(reports) {
+  const byDay = new Map();
+  for (const report of reports) {
+    const key = reportDayKey(report);
+    const current = byDay.get(key);
+    const currentTime = current ? new Date(current.generatedAt || current.updatedAt || current.date).getTime() : 0;
+    const nextTime = new Date(report.generatedAt || report.updatedAt || report.date).getTime();
+    if (!current || nextTime >= currentTime) byDay.set(key, report);
+  }
+  return Array.from(byDay.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
+}
+
 function getDailyMessage(report) {
   if (!report) return "Generate a report after adding tasks.";
   if (report.totalTasks === 0) return "No tasks were planned for this day. Add tasks before generating reports.";
@@ -24,6 +47,17 @@ function getDailyMessage(report) {
   if (report.completionRate >= 80) return "Strong day. You hit the consistency target.";
   if (report.completionRate >= 50) return "Decent progress, but protect your hardest task earlier in the day.";
   return "Low completion day. Reduce task count or start with one high-priority task.";
+}
+
+function getTrendMessage(reports) {
+  if (!reports.length) return "Generate reports to see your preparation pattern.";
+  const activeDays = reports.filter((report) => report.totalTasks > 0);
+  if (!activeDays.length) return "Plan tasks for the next study day to start building a trend.";
+  const average = Math.round(activeDays.reduce((sum, report) => sum + report.completionRate, 0) / activeDays.length);
+  const best = activeDays.reduce((top, report) => (report.completionRate > top.completionRate ? report : top), activeDays[0]);
+  if (average >= 80) return `Strong consistency. Your recent average is ${average}% and the best day was ${formatDate(best.date)}.`;
+  if (average >= 50) return `Average is ${average}%. Push the first task earlier and keep one focused revision slot.`;
+  return `Average is ${average}%. Reduce daily load and finish one high-priority task before adding more.`;
 }
 
 export default function Reports() {
@@ -48,21 +82,24 @@ export default function Reports() {
     setLoading(false);
   }
 
-  const latestDaily = daily[0];
+  const uniqueDaily = useMemo(() => getUniqueDailyReports(daily), [daily]);
+  const latestDaily = uniqueDaily[0];
   const latestWeekly = weekly[0];
 
   const chartData = useMemo(
     () =>
-      daily
+      uniqueDaily
         .slice(0, 7)
         .reverse()
         .map((report) => ({
           date: formatDate(report.date),
           completion: report.completionRate,
           xp: report.totalPointsEarned,
-          study: Math.round((report.totalStudyTimeMinutes || 0) / 60 * 10) / 10
+          study: report.totalStudyTimeMinutes || 0,
+          tasks: report.totalTasks,
+          completed: report.completedTasks
         })),
-    [daily]
+    [uniqueDaily]
   );
 
   const completionText = latestDaily
@@ -132,6 +169,10 @@ export default function Reports() {
                 </div>
               </div>
               <p className="report-message">{getDailyMessage(latestDaily)}</p>
+              <div className="report-action-strip">
+                <span>Next useful move</span>
+                <strong>{latestDaily.pendingTasks > 0 ? "Finish the highest-priority pending task first." : "Create tomorrow's plan with one revision task."}</strong>
+              </div>
               <div className="metric-grid">
                 <div><span>Completed</span><strong>{latestDaily.completedTasks}</strong></div>
                 <div><span>Pending</span><strong>{latestDaily.pendingTasks}</strong></div>
@@ -159,17 +200,19 @@ export default function Reports() {
             </div>
           ) : latestWeekly ? (
             <>
-              <div className="weekly-focus">
-                <span>Best day</span>
-                <strong>{latestWeekly.bestDay}</strong>
-              </div>
-              <div className="weekly-focus">
-                <span>Weekly completion</span>
-                <strong>{latestWeekly.completionRate}%</strong>
-              </div>
-              <div className="weekly-focus">
-                <span>Weakest area</span>
-                <strong>{latestWeekly.weakestCategory}</strong>
+              <div className="weekly-guidance-grid">
+                <div className="weekly-focus">
+                  <span>Best day</span>
+                  <strong>{latestWeekly.bestDay}</strong>
+                </div>
+                <div className="weekly-focus">
+                  <span>Weekly completion</span>
+                  <strong>{latestWeekly.completionRate}%</strong>
+                </div>
+                <div className="weekly-focus">
+                  <span>Weakest area</span>
+                  <strong>{latestWeekly.weakestCategory}</strong>
+                </div>
               </div>
               <p className="report-message">{latestWeekly.improvementSuggestion}</p>
             </>
@@ -189,16 +232,18 @@ export default function Reports() {
           {loading && !chartData.length ? (
             <div className="chart-bars-skeleton"><span /><span /><span /><span /><span /></div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={chartData}>
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(255,255,255,.08)" />
                 <XAxis dataKey="date" stroke="#a3a3a3" />
                 <YAxis stroke="#a3a3a3" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#f5f5f5" }} labelStyle={{ color: "#f97316" }} cursor={{ fill: "rgba(249,115,22,.08)" }} formatter={(value) => [`${value}%`, "Completion"]} />
-                <Bar dataKey="completion" fill="#f97316" radius={[6, 6, 0, 0]} />
-              </BarChart>
+                <ReferenceLine y={80} stroke="#22c55e" strokeDasharray="4 4" />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#f5f5f5" }} labelStyle={{ color: "#f97316" }} formatter={(value, name) => (name === "completion" ? [`${value}%`, "Completion"] : [value, name])} />
+                <Line type="monotone" dataKey="completion" stroke="#f97316" strokeWidth={4} dot={{ r: 5, fill: "#111", stroke: "#f97316", strokeWidth: 3 }} activeDot={{ r: 7 }} />
+              </LineChart>
             </ResponsiveContainer>
           )}
+          <p className="chart-insight">{getTrendMessage(uniqueDaily.slice(0, 7))}</p>
         </Card>
 
         <Card className="chart-card">
@@ -210,13 +255,17 @@ export default function Reports() {
           {loading && !chartData.length ? (
             <div className="chart-bars-skeleton red"><span /><span /><span /><span /><span /></div>
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={chartData}>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
                 <CartesianGrid stroke="rgba(255,255,255,.08)" />
                 <XAxis dataKey="date" stroke="#a3a3a3" />
                 <YAxis stroke="#a3a3a3" />
-                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#f5f5f5" }} labelStyle={{ color: "#f97316" }} cursor={{ fill: "rgba(153,27,27,.1)" }} formatter={(value) => [value, "XP"]} />
-                <Bar dataKey="xp" fill="#991b1b" radius={[6, 6, 0, 0]} />
+                <Tooltip contentStyle={tooltipStyle} itemStyle={{ color: "#f5f5f5" }} labelStyle={{ color: "#f97316" }} cursor={{ fill: "rgba(249,115,22,.08)" }} formatter={(value) => [value, "XP"]} />
+                <Bar dataKey="xp" radius={[8, 8, 0, 0]}>
+                  {chartData.map((entry) => (
+                    <Cell key={entry.date} fill={entry.xp > 0 ? "#f97316" : "rgba(255,255,255,.12)"} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -243,12 +292,18 @@ export default function Reports() {
                 <th>Study</th>
                 <th>Strongest</th>
                 <th>Weakest</th>
+                <th>Read</th>
               </tr>
             </thead>
             <tbody>
-              {daily.slice(0, 10).map((report) => (
+              {uniqueDaily.slice(0, 10).map((report) => (
                 <tr key={report._id}>
-                  <td>{formatDate(report.date)}</td>
+                  <td>
+                    <div className="report-date-cell">
+                      <CalendarDays size={16} />
+                      <strong>{formatDate(report.date)}</strong>
+                    </div>
+                  </td>
                   <td>{report.completedTasks}/{report.totalTasks}</td>
                   <td>
                     <div className="table-progress">
@@ -257,9 +312,12 @@ export default function Reports() {
                     {report.completionRate}%
                   </td>
                   <td>{report.totalPointsEarned}</td>
-                  <td>{report.totalStudyTimeMinutes}m</td>
+                  <td>{formatMinutes(report.totalStudyTimeMinutes)}</td>
                   <td>{report.strongestCategory}</td>
                   <td>{report.weakestCategory}</td>
+                  <td className={report.completionRate >= 80 ? "report-read good" : report.completionRate >= 50 ? "report-read mid" : "report-read low"}>
+                    {report.completionRate >= 80 ? "On track" : report.completionRate >= 50 ? "Improve" : "Focus"}
+                  </td>
                 </tr>
               ))}
             </tbody>

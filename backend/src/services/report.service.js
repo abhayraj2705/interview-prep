@@ -135,10 +135,7 @@ export async function getDashboardSummary(userId) {
 
   const start = startOfDay();
   const end = endOfDay();
-  const weekStart = startOfWeek();
-  const [cachedToday, cachedWeekly, reward, todayTasks] = await Promise.all([
-    DailyReport.findOne({ userId, date: start }).lean(),
-    WeeklyReport.findOne({ userId, weekStartDate: weekStart }).lean(),
+  const [reward, todayTasks] = await Promise.all([
     getOrCreateReward(userId),
     Task.find({ userId, dueDate: { $gte: start, $lte: end } })
       .select("title category priority difficulty status dueDate estimatedTimeMinutes actualTimeMinutes points")
@@ -148,8 +145,8 @@ export async function getDashboardSummary(userId) {
   ]);
 
   const [today, weekly] = await Promise.all([
-    cachedToday ? { report: cachedToday, categoryBreakdown: [] } : generateDailyReport(userId),
-    cachedWeekly ? { report: cachedWeekly, categoryBreakdown: [] } : generateWeeklyReport(userId)
+    generateDailyReport(userId),
+    generateWeeklyReport(userId)
   ]);
 
   const data = {

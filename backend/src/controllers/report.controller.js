@@ -5,7 +5,26 @@ import { successResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
 export const getDailyReports = asyncHandler(async (req, res) => {
-  const reports = await DailyReport.find({ userId: req.user._id }).sort({ date: -1 }).limit(30);
+  const reports = await DailyReport.aggregate([
+    { $match: { userId: req.user._id } },
+    {
+      $addFields: {
+        reportDay: {
+          $dateToString: {
+            format: "%Y-%m-%d",
+            date: "$date",
+            timezone: "Asia/Kolkata"
+          }
+        }
+      }
+    },
+    { $sort: { reportDay: -1, generatedAt: -1, updatedAt: -1 } },
+    { $group: { _id: "$reportDay", report: { $first: "$$ROOT" } } },
+    { $replaceRoot: { newRoot: "$report" } },
+    { $sort: { date: -1, generatedAt: -1 } },
+    { $limit: 30 },
+    { $project: { reportDay: 0 } }
+  ]);
   return successResponse(res, "Daily reports fetched", { reports });
 });
 
