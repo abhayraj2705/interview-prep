@@ -145,3 +145,10 @@ export const deleteTask = asyncHandler(async (req, res) => {
   invalidateDashboardCache(req.user._id);
   return successResponse(res, "Task deleted", { task });
 });
+
+export const deleteTasks = asyncHandler(async (req, res) => {
+  const filters = buildFilters(req.query, req.user._id);
+  const result = await Task.deleteMany(filters);
+  invalidateDashboardCache(req.user._id);
+  return successResponse(res, "Tasks deleted", { deletedCount: result.deletedCount });
+});

@@ -6,6 +6,7 @@ export const taskApi = {
   create: (payload) => api.post("/tasks", payload),
   update: (id, payload) => api.put(`/tasks/${id}`, payload),
   remove: (id) => api.delete(`/tasks/${id}`),
+  removeAll: (params) => api.delete("/tasks", { params }),
   complete: (id, payload = {}) => api.patch(`/tasks/${id}/complete`, payload),
   status: (id, status) => api.patch(`/tasks/${id}/status`, { status })
 };

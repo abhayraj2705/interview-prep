@@ -27,6 +27,7 @@ export default function Tasks() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const roadmapId = searchParams.get("roadmapId");
   const importedCount = searchParams.get("imported");
@@ -102,7 +103,33 @@ export default function Tasks() {
   }
 
   async function deleteTask(id) {
-    await runTaskAction(() => taskApi.remove(id), "Could not delete task");
+    setError("");
+    const previousTasks = tasks;
+    setTasks((current) => current.filter((task) => task._id !== id));
+    try {
+      await taskApi.remove(id);
+    } catch (err) {
+      setTasks(previousTasks);
+      setError(err.response?.status === 404 ? "That task was already deleted." : getErrorMessage(err) || "Could not delete task");
+    }
+  }
+
+  async function deleteAllTasks() {
+    if (!tasks.length) return;
+    const scopedMessage = roadmapId || source || filters.category || filters.status || filters.priority ? "matching the current filters" : "in your task list";
+    if (!confirm(`Delete all ${tasks.length} tasks ${scopedMessage}? This cannot be undone.`)) return;
+    setError("");
+    setDeletingAll(true);
+    const previousTasks = tasks;
+    setTasks([]);
+    try {
+      await taskApi.removeAll(activeFilters);
+    } catch (err) {
+      setTasks(previousTasks);
+      setError(getErrorMessage(err) || "Could not delete all tasks");
+    } finally {
+      setDeletingAll(false);
+    }
   }
 
   return (
@@ -112,7 +139,12 @@ export default function Tasks() {
           <p className="eyebrow">Plan and execute</p>
           <h1>Tasks</h1>
         </div>
-        <button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={18} /> Add Task</button>
+        <div className="button-row">
+          <button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={18} /> Add Task</button>
+          <button className="icon-button danger" onClick={deleteAllTasks} disabled={!tasks.length || deletingAll || loading} title="Delete all visible tasks">
+            <Trash2 size={18} />
+          </button>
+        </div>
       </header>
 
       {error ? <div className="alert">{error}</div> : null}

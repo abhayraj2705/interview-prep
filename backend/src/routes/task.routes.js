@@ -2,6 +2,7 @@ import express from "express";
 import {
   completeTask,
   createTask,
+  deleteTasks,
   deleteTask,
   getTaskById,
   getTasks,
@@ -14,7 +15,7 @@ import { protect } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 router.use(protect);
-router.route("/").post(createTask).get(getTasks);
+router.route("/").post(createTask).get(getTasks).delete(deleteTasks);
 router.get("/today", getTodayTasks);
 router.route("/:id").get(getTaskById).put(updateTask).delete(deleteTask);
 router.patch("/:id/complete", completeTask);

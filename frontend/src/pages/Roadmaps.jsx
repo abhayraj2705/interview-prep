@@ -1,4 +1,4 @@
-import { CalendarDays, Clock3, Map, Plus, Route, Sparkles } from "lucide-react";
+import { CalendarDays, Clock3, Map, Plus, Route, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Card from "../components/ui/Card.jsx";
@@ -7,12 +7,31 @@ import { roadmapApi } from "../services/roadmapApi";
 export default function Roadmaps() {
   const [roadmaps, setRoadmaps] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingAll, setDeletingAll] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     roadmapApi.list().then((response) => setRoadmaps(response.data.data.roadmaps)).finally(() => setLoading(false));
   }, []);
 
   const activeCount = roadmaps.filter((roadmap) => roadmap.status === "Active").length;
+
+  async function deleteAllRoadmaps() {
+    if (!roadmaps.length) return;
+    if (!confirm(`Delete all ${roadmaps.length} roadmaps? This cannot be undone.`)) return;
+    setError("");
+    setDeletingAll(true);
+    const previousRoadmaps = roadmaps;
+    setRoadmaps([]);
+    try {
+      await roadmapApi.removeAll();
+    } catch (err) {
+      setRoadmaps(previousRoadmaps);
+      setError(err.response?.data?.message || err.message || "Could not delete all roadmaps");
+    } finally {
+      setDeletingAll(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -22,8 +41,15 @@ export default function Roadmaps() {
           <h1>Roadmaps</h1>
           <p className="page-subtitle">Browse generated preparation plans, compare daily load, and continue from the plan that matches your current target.</p>
         </div>
-        <Link className="btn-primary" to="/ai-planner"><Plus size={18} /> New Roadmap</Link>
+        <div className="button-row">
+          <Link className="btn-primary" to="/ai-planner"><Plus size={18} /> New Roadmap</Link>
+          <button className="icon-button danger" onClick={deleteAllRoadmaps} disabled={!roadmaps.length || deletingAll || loading} title="Delete all roadmaps">
+            <Trash2 size={18} />
+          </button>
+        </div>
       </header>
+
+      {error ? <div className="alert">{error}</div> : null}
 
       <Card className="roadmap-library-hero">
         <div>

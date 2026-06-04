@@ -65,6 +65,11 @@ export const deleteRoadmap = asyncHandler(async (req, res) => {
   return successResponse(res, "Roadmap deleted", { roadmap });
 });
 
+export const deleteRoadmaps = asyncHandler(async (req, res) => {
+  const result = await Roadmap.deleteMany({ userId: req.user._id });
+  return successResponse(res, "Roadmaps deleted", { deletedCount: result.deletedCount });
+});
+
 export const activate = asyncHandler(async (req, res) => {
   const roadmap = await activateRoadmap(req.user._id, req.params.id);
   return successResponse(res, "Roadmap activated", { roadmap });
