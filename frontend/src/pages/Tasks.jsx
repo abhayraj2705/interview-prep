@@ -1,4 +1,4 @@
-import { Check, Edit3, Map, Plus, Trash2, X } from "lucide-react";
+import { Check, Edit3, Mail, Map, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import Card from "../components/ui/Card.jsx";
@@ -26,8 +26,10 @@ export default function Tasks() {
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
 
   const roadmapId = searchParams.get("roadmapId");
   const importedCount = searchParams.get("imported");
@@ -58,6 +60,7 @@ export default function Tasks() {
   async function handleSubmit(event) {
     event.preventDefault();
     setError("");
+    setMessage("");
     const payload = { ...form, dueDate: new Date(form.dueDate).toISOString() };
     try {
       if (editingId) await taskApi.update(editingId, payload);
@@ -85,6 +88,7 @@ export default function Tasks() {
 
   async function runTaskAction(action, fallbackMessage = "Task action failed") {
     setError("");
+    setMessage("");
     try {
       await action();
       await loadTasks();
@@ -104,6 +108,7 @@ export default function Tasks() {
 
   async function deleteTask(id) {
     setError("");
+    setMessage("");
     const previousTasks = tasks;
     setTasks((current) => current.filter((task) => task._id !== id));
     try {
@@ -119,6 +124,7 @@ export default function Tasks() {
     const scopedMessage = roadmapId || source || filters.category || filters.status || filters.priority ? "matching the current filters" : "in your task list";
     if (!confirm(`Delete all ${tasks.length} tasks ${scopedMessage}? This cannot be undone.`)) return;
     setError("");
+    setMessage("");
     setDeletingAll(true);
     const previousTasks = tasks;
     setTasks([]);
@@ -132,6 +138,20 @@ export default function Tasks() {
     }
   }
 
+  async function sendTodayReminder() {
+    setError("");
+    setMessage("");
+    setSendingReminder(true);
+    try {
+      const response = await taskApi.sendTodayReminder();
+      setMessage(response.data.message || "Today's task reminder email sent.");
+    } catch (err) {
+      setError(getErrorMessage(err) || "Could not send today's task reminder email.");
+    } finally {
+      setSendingReminder(false);
+    }
+  }
+
   return (
     <div className="page">
       <header className="page-header">
@@ -141,6 +161,9 @@ export default function Tasks() {
         </div>
         <div className="button-row">
           <button className="btn-primary" onClick={() => setShowForm(true)}><Plus size={18} /> Add Task</button>
+          <button className="btn-secondary" onClick={sendTodayReminder} disabled={sendingReminder || loading} title="Email today's tasks">
+            <Mail size={18} /> {sendingReminder ? "Sending..." : "Email Today"}
+          </button>
           <button className="icon-button danger" onClick={deleteAllTasks} disabled={!tasks.length || deletingAll || loading} title="Delete all visible tasks">
             <Trash2 size={18} />
           </button>
@@ -148,6 +171,7 @@ export default function Tasks() {
       </header>
 
       {error ? <div className="alert">{error}</div> : null}
+      {message ? <div className="alert soft">{message}</div> : null}
 
       {roadmapId ? (
         <div className="alert soft imported-banner">

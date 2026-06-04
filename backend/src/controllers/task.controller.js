@@ -4,6 +4,7 @@ import { successResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { endOfDay, startOfDay } from "../utils/date.js";
 import { invalidateDashboardCache } from "../services/dashboardCache.service.js";
+import { sendMorningReminder } from "../services/mail.service.js";
 
 function buildFilters(query, userId) {
   const filters = { userId };
@@ -151,4 +152,9 @@ export const deleteTasks = asyncHandler(async (req, res) => {
   const result = await Task.deleteMany(filters);
   invalidateDashboardCache(req.user._id);
   return successResponse(res, "Tasks deleted", { deletedCount: result.deletedCount });
+});
+
+export const sendTodayTaskReminder = asyncHandler(async (req, res) => {
+  const result = await sendMorningReminder(req.user);
+  return successResponse(res, result.skipped ? "Email credentials are not configured" : "Today's task reminder sent", { result });
 });
